@@ -188,6 +188,16 @@ h3.mt-4(translate) Docking
         )
         label.btn.btn-secondary(for='dockingBottom')
             span(translate) Bottom
+        input.btn-check(
+            type='radio',
+            name='docking',
+            [(ngModel)]='config.store.appearance.dock',
+            (ngModelChange)='saveConfiguration(); docking.dock()',
+            id='dockingCenter',
+            [value]='"center"'
+        )
+        label.btn.btn-secondary(for='dockingCenter')
+            span(translate) Center
 
 .ms-5.form-line(*ngIf='docking && config.store.appearance.dock != "off"')
     .header

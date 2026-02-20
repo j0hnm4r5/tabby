@@ -44,27 +44,34 @@ export class ElectronDockingService extends DockingService {
         const space = this.config.store.appearance.dockSpace <= 1 ? this.config.store.appearance.dockSpace : 1
         const [minWidth, minHeight] = this.hostWindow.getWindow().getMinimumSize()
 
-        if (dockSide === 'left' || dockSide === 'right') {
+        if (dockSide === 'center') {
             newBounds.width = Math.max(minWidth, Math.round(fill * display.workArea.width))
-            newBounds.height = Math.round(display.workArea.height * space)
-        }
-        if (dockSide === 'top' || dockSide === 'bottom') {
-            newBounds.width = Math.round(display.workArea.width * space)
-            newBounds.height = Math.max(minHeight, Math.round(fill * display.workArea.height))
-        }
-        if (dockSide === 'right') {
-            newBounds.x = display.workArea.x + display.workArea.width - newBounds.width
-        } else if (dockSide === 'left') {
-            newBounds.x = display.workArea.x
+            newBounds.height = Math.max(minHeight, Math.round(space * display.workArea.height))
+            newBounds.x = display.workArea.x + Math.round((display.workArea.width - newBounds.width) / 2)
+            newBounds.y = display.workArea.y + Math.round((display.workArea.height - newBounds.height) / 2)
         } else {
-            newBounds.x = display.workArea.x + Math.round(display.workArea.width / 2 * (1 - space))
-        }
-        if (dockSide === 'bottom') {
-            newBounds.y = display.workArea.y + display.workArea.height - newBounds.height
-        } else if (dockSide === 'top') {
-            newBounds.y = display.workArea.y
-        } else {
-            newBounds.y = display.workArea.y + Math.round(display.workArea.height / 2 * (1 - space))
+            if (dockSide === 'left' || dockSide === 'right') {
+                newBounds.width = Math.max(minWidth, Math.round(fill * display.workArea.width))
+                newBounds.height = Math.round(display.workArea.height * space)
+            }
+            if (dockSide === 'top' || dockSide === 'bottom') {
+                newBounds.width = Math.round(display.workArea.width * space)
+                newBounds.height = Math.max(minHeight, Math.round(fill * display.workArea.height))
+            }
+            if (dockSide === 'right') {
+                newBounds.x = display.workArea.x + display.workArea.width - newBounds.width
+            } else if (dockSide === 'left') {
+                newBounds.x = display.workArea.x
+            } else {
+                newBounds.x = display.workArea.x + Math.round(display.workArea.width / 2 * (1 - space))
+            }
+            if (dockSide === 'bottom') {
+                newBounds.y = display.workArea.y + display.workArea.height - newBounds.height
+            } else if (dockSide === 'top') {
+                newBounds.y = display.workArea.y
+            } else {
+                newBounds.y = display.workArea.y + Math.round(display.workArea.height / 2 * (1 - space))
+            }
         }
 
         const alwaysOnTop = this.config.store.appearance.dockAlwaysOnTop
