@@ -77,7 +77,9 @@ export class Window {
             acceptFirstMouse: true,
         }
 
-        if (this.windowBounds) {
+        const isDocked = (this.configStore.appearance?.dock ?? 'off') !== 'off'
+
+        if (this.windowBounds && !isDocked) {
             Object.assign(bwOptions, this.windowBounds)
             const closestDisplay = screen.getDisplayNearestPoint( { x: this.windowBounds.x, y: this.windowBounds.y } )
 
