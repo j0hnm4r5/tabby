@@ -238,8 +238,8 @@ h3.mt-4(translate) Docking
 
 .ms-5.form-line(*ngIf='docking && config.store.appearance.dock != "off"')
     .header
-        .title(translate) Docked terminal size
-        .description(translate) Window dimension away from the edge
+        .title([translate]='dockFillLabel')
+        .description([translate]='dockFillDescription')
     input(
         type='range',
         [(ngModel)]='config.store.appearance.dockFill',
@@ -251,8 +251,8 @@ h3.mt-4(translate) Docking
 
 .ms-5.form-line(*ngIf='docking && config.store.appearance.dock != "off"')
     .header
-        .title(translate) Docked terminal space
-        .description(translate) Window dimension along the edge
+        .title([translate]='dockSpaceLabel')
+        .description([translate]='dockSpaceDescription')
     input(
         type='range',
         [(ngModel)]='config.store.appearance.dockSpace',
