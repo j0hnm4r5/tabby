@@ -55,38 +55,42 @@ export class ElectronDockingService extends DockingService {
         //   as a fraction of the screen. Height for left/right/center, width for top/bottom.
         // Both values are updated live by the main process when the user resizes
         // the window edges directly (host:docked-resize IPC).
-        const fill = this.config.store.appearance.dockFill <= 1 ? this.config.store.appearance.dockFill : 1
-        const space = this.config.store.appearance.dockSpace <= 1 ? this.config.store.appearance.dockSpace : 1
+        const fill = Math.max(0, Math.min(this.config.store.appearance.dockFill, 1))
+        const space = Math.max(0, Math.min(this.config.store.appearance.dockSpace, 1))
         const [minWidth, minHeight] = this.hostWindow.getWindow().getMinimumSize()
 
-        if (dockSide === 'center') {
-            newBounds.width = Math.max(minWidth, Math.round(fill * display.workArea.width))
-            newBounds.height = Math.max(minHeight, Math.round(space * display.workArea.height))
-            newBounds.x = display.workArea.x + Math.round((display.workArea.width - newBounds.width) / 2)
-            newBounds.y = display.workArea.y + Math.round((display.workArea.height - newBounds.height) / 2)
-        } else {
-            if (dockSide === 'left' || dockSide === 'right') {
-                newBounds.width = Math.max(minWidth, Math.round(fill * display.workArea.width))
-                newBounds.height = Math.round(display.workArea.height * space)
-            }
-            if (dockSide === 'top' || dockSide === 'bottom') {
-                newBounds.width = Math.round(display.workArea.width * space)
-                newBounds.height = Math.max(minHeight, Math.round(fill * display.workArea.height))
-            }
-            if (dockSide === 'right') {
-                newBounds.x = display.workArea.x + display.workArea.width - newBounds.width
-            } else if (dockSide === 'left') {
-                newBounds.x = display.workArea.x
-            } else {
-                newBounds.x = display.workArea.x + Math.round(display.workArea.width / 2 * (1 - space))
-            }
-            if (dockSide === 'bottom') {
-                newBounds.y = display.workArea.y + display.workArea.height - newBounds.height
-            } else if (dockSide === 'top') {
-                newBounds.y = display.workArea.y
-            } else {
-                newBounds.y = display.workArea.y + Math.round(display.workArea.height / 2 * (1 - space))
-            }
+        const wa = display.workArea
+        switch (dockSide) {
+            case 'center':
+                newBounds.width = Math.max(minWidth, Math.round(fill * wa.width))
+                newBounds.height = Math.max(minHeight, Math.round(space * wa.height))
+                newBounds.x = wa.x + Math.round((wa.width - newBounds.width) / 2)
+                newBounds.y = wa.y + Math.round((wa.height - newBounds.height) / 2)
+                break
+            case 'left':
+                newBounds.width = Math.max(minWidth, Math.round(fill * wa.width))
+                newBounds.height = Math.round(wa.height * space)
+                newBounds.x = wa.x
+                newBounds.y = wa.y + Math.round((wa.height - newBounds.height) / 2)
+                break
+            case 'right':
+                newBounds.width = Math.max(minWidth, Math.round(fill * wa.width))
+                newBounds.height = Math.round(wa.height * space)
+                newBounds.x = wa.x + wa.width - newBounds.width
+                newBounds.y = wa.y + Math.round((wa.height - newBounds.height) / 2)
+                break
+            case 'top':
+                newBounds.width = Math.round(wa.width * space)
+                newBounds.height = Math.max(minHeight, Math.round(fill * wa.height))
+                newBounds.x = wa.x + Math.round((wa.width - newBounds.width) / 2)
+                newBounds.y = wa.y
+                break
+            case 'bottom':
+                newBounds.width = Math.round(wa.width * space)
+                newBounds.height = Math.max(minHeight, Math.round(fill * wa.height))
+                newBounds.x = wa.x + Math.round((wa.width - newBounds.width) / 2)
+                newBounds.y = wa.y + wa.height - newBounds.height
+                break
         }
 
         const alwaysOnTop = this.config.store.appearance.dockAlwaysOnTop

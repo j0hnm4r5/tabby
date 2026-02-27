@@ -50,7 +50,7 @@ export class Window {
     private dockedBounds: Rectangle | null = null
     private dragStartBounds: Rectangle | null = null
     private dragActiveEdges: { h: 'left' | 'right' | null, v: 'top' | 'bottom' | null } | null = null
-    private dragEndTimeout: any = null
+    private dragEndTimeout: ReturnType<typeof setTimeout> | null = null
 
     get visible$ (): Observable<boolean> { return this.visible }
     get closed$ (): Observable<void> { return this.closed }
@@ -403,19 +403,6 @@ export class Window {
             }
         })
 
-        // Track drag start position. will-resize fires before the OS applies the resize,
-        // so getBounds() here gives the true pre-resize position. will-resize may not fire
-        // for left/top edge drags on macOS frameless windows — the resize handler has a fallback.
-        this.window.on('will-resize', () => {
-            if (this.dockMode !== 'off' && this.isMainWindow && this.dockedBounds) {
-                if (!this.dragStartBounds) {
-                    // Use the OS's actual window position (not our potentially stale dockedBounds)
-                    this.dragStartBounds = this.window.getBounds()
-                }
-                this.extendDragEndTimeout()
-            }
-        })
-
         // After the OS applies its resize, correct it for symmetric docked behavior
         this.window.on('resize', () => {
             if (this.dockMode === 'off' || !this.isMainWindow || !this.dockedBounds) {
@@ -431,10 +418,9 @@ export class Window {
                 return
             }
 
-            // Fallback: if will-resize didn't fire (left/top edge drags on macOS frameless),
-            // use the OS's current actual bounds as the drag baseline and skip this frame.
-            // This gives us a clean reference that matches the OS's own tracking, so edge
-            // detection on the NEXT frame is accurate (not contaminated by stale dockedBounds).
+            // On the first resize of a new drag, capture the OS's actual bounds as the
+            // baseline and skip correction. This gives a clean reference that matches the
+            // OS's own tracking, so edge detection on the next frame is accurate.
             if (!this.dragStartBounds) {
                 if (actual.width !== expected.width || actual.height !== expected.height) {
                     this.dragStartBounds = { ...actual }
@@ -451,9 +437,9 @@ export class Window {
             // The dragged edge shows a clear delta from start; non-dragged edges are ~0.
             if (!this.dragActiveEdges) {
                 const ld = Math.abs(start.x - actual.x)
-                const rd = Math.abs((actual.x + actual.width) - (start.x + start.width))
+                const rd = Math.abs(actual.x + actual.width - (start.x + start.width))
                 const td = Math.abs(start.y - actual.y)
-                const bd = Math.abs((actual.y + actual.height) - (start.y + start.height))
+                const bd = Math.abs(actual.y + actual.height - (start.y + start.height))
                 this.dragActiveEdges = {
                     h: ld > rd ? 'left' : rd > ld ? 'right' : null,
                     v: td > bd ? 'top' : bd > td ? 'bottom' : null,
@@ -472,13 +458,13 @@ export class Window {
 
             // Horizontal axis
             const leftDelta = start.x - actual.x
-            const rightDelta = (actual.x + actual.width) - (start.x + start.width)
+            const rightDelta = actual.x + actual.width - (start.x + start.width)
             if (leftDelta !== 0 || rightDelta !== 0) {
                 switch (this.dockMode) {
                     case 'left': {
                         // Anchored left: pin left edge, free edge is wherever the OS put the right
                         result.x = wa.x
-                        result.width = Math.max(minW, Math.min(wa.width, (actual.x + actual.width) - wa.x))
+                        result.width = Math.max(minW, Math.min(wa.width, actual.x + actual.width - wa.x))
                         break
                     }
                     case 'right': {
@@ -493,7 +479,7 @@ export class Window {
                         // Fall back to max-abs when active edge is unknown.
                         const delta = activeH === 'right' ? rightDelta
                             : activeH === 'left' ? leftDelta
-                            : Math.abs(rightDelta) >= Math.abs(leftDelta) ? rightDelta : leftDelta
+                                : Math.abs(rightDelta) >= Math.abs(leftDelta) ? rightDelta : leftDelta
                         const cx = start.x + start.width / 2
                         result.width = Math.max(minW, Math.min(wa.width, start.width + 2 * delta))
                         result.x = Math.round(cx - result.width / 2)
@@ -504,13 +490,13 @@ export class Window {
 
             // Vertical axis
             const topDelta = start.y - actual.y
-            const bottomDelta = (actual.y + actual.height) - (start.y + start.height)
+            const bottomDelta = actual.y + actual.height - (start.y + start.height)
             if (topDelta !== 0 || bottomDelta !== 0) {
                 switch (this.dockMode) {
                     case 'top': {
                         // Anchored top: pin top edge, free edge is wherever the OS put the bottom
                         result.y = wa.y
-                        result.height = Math.max(minH, Math.min(wa.height, (actual.y + actual.height) - wa.y))
+                        result.height = Math.max(minH, Math.min(wa.height, actual.y + actual.height - wa.y))
                         break
                     }
                     case 'bottom': {
@@ -524,7 +510,7 @@ export class Window {
                         // Symmetric: use the active edge's delta consistently
                         const delta = activeV === 'bottom' ? bottomDelta
                             : activeV === 'top' ? topDelta
-                            : Math.abs(bottomDelta) >= Math.abs(topDelta) ? bottomDelta : topDelta
+                                : Math.abs(bottomDelta) >= Math.abs(topDelta) ? bottomDelta : topDelta
                         const cy = start.y + start.height / 2
                         result.height = Math.max(minH, Math.min(wa.height, start.height + 2 * delta))
                         result.y = Math.round(cy - result.height / 2)
@@ -536,7 +522,7 @@ export class Window {
             this.dockedBounds = result
             this.window.setBounds(result)
 
-            let fill: number, space: number
+            let fill = 0, space = 0
             switch (this.dockMode) {
                 case 'left': case 'right': case 'center':
                     fill = result.width / wa.width
