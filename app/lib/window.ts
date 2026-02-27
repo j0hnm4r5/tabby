@@ -46,9 +46,30 @@ export class Window {
     private touchBarControl: any
     private isFluentVibrancy = false
     private dockHidden = false
+    private dockMode = 'off'
+    private dockedBounds: Rectangle | null = null
+    private dragStartBounds: Rectangle | null = null
+    private dragActiveEdges: { h: 'left' | 'right' | null, v: 'top' | 'bottom' | null } | null = null
+    private dragEndTimeout: any = null
 
     get visible$ (): Observable<boolean> { return this.visible }
     get closed$ (): Observable<void> { return this.closed }
+
+    private extendDragEndTimeout (): void {
+        if (this.dragEndTimeout) {
+            clearTimeout(this.dragEndTimeout)
+        }
+        this.dragEndTimeout = setTimeout(() => {
+            // Sync dockedBounds with the OS's actual window position to prevent
+            // stale references when the next drag starts
+            if (this.dockedBounds && this.window && !this.window.isDestroyed()) {
+                this.dockedBounds = this.window.getBounds()
+            }
+            this.dragStartBounds = null
+            this.dragActiveEdges = null
+            this.dragEndTimeout = null
+        }, 300)
+    }
 
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
     constructor (private application: Application, private configStore: any, options?: WindowOptions) {
@@ -373,6 +394,164 @@ export class Window {
             }
         })
 
+        this.on('window-set-dock-mode', (_, mode) => {
+            this.dockMode = mode
+            this.dragStartBounds = null
+            this.dragActiveEdges = null
+            if (mode === 'off') {
+                this.dockedBounds = null
+            }
+        })
+
+        // Track drag start position. will-resize fires before the OS applies the resize,
+        // so getBounds() here gives the true pre-resize position. will-resize may not fire
+        // for left/top edge drags on macOS frameless windows — the resize handler has a fallback.
+        this.window.on('will-resize', () => {
+            if (this.dockMode !== 'off' && this.isMainWindow && this.dockedBounds) {
+                if (!this.dragStartBounds) {
+                    // Use the OS's actual window position (not our potentially stale dockedBounds)
+                    this.dragStartBounds = this.window.getBounds()
+                }
+                this.extendDragEndTimeout()
+            }
+        })
+
+        // After the OS applies its resize, correct it for symmetric docked behavior
+        this.window.on('resize', () => {
+            if (this.dockMode === 'off' || !this.isMainWindow || !this.dockedBounds) {
+                return
+            }
+
+            const actual = this.window.getBounds()
+            const expected = this.dockedBounds
+
+            // Skip if bounds already match expected (correction-triggered or programmatic resize)
+            if (actual.x === expected.x && actual.y === expected.y &&
+                actual.width === expected.width && actual.height === expected.height) {
+                return
+            }
+
+            // Fallback: if will-resize didn't fire (left/top edge drags on macOS frameless),
+            // use the OS's current actual bounds as the drag baseline and skip this frame.
+            // This gives us a clean reference that matches the OS's own tracking, so edge
+            // detection on the NEXT frame is accurate (not contaminated by stale dockedBounds).
+            if (!this.dragStartBounds) {
+                if (actual.width !== expected.width || actual.height !== expected.height) {
+                    this.dragStartBounds = { ...actual }
+                    this.extendDragEndTimeout()
+                }
+                return
+            }
+
+            this.extendDragEndTimeout()
+
+            const start = this.dragStartBounds
+
+            // Detect active edges once from the first correction frame's actual data.
+            // The dragged edge shows a clear delta from start; non-dragged edges are ~0.
+            if (!this.dragActiveEdges) {
+                const ld = Math.abs(start.x - actual.x)
+                const rd = Math.abs((actual.x + actual.width) - (start.x + start.width))
+                const td = Math.abs(start.y - actual.y)
+                const bd = Math.abs((actual.y + actual.height) - (start.y + start.height))
+                this.dragActiveEdges = {
+                    h: ld > rd ? 'left' : rd > ld ? 'right' : null,
+                    v: td > bd ? 'top' : bd > td ? 'bottom' : null,
+                }
+            }
+
+            const display = screen.getDisplayNearestPoint({
+                x: start.x + Math.round(start.width / 2),
+                y: start.y + Math.round(start.height / 2),
+            })
+            const wa = display.workArea
+            const [minW, minH] = this.window.getMinimumSize()
+            const result = { ...actual }
+            const activeH = this.dragActiveEdges.h
+            const activeV = this.dragActiveEdges.v
+
+            // Horizontal axis
+            const leftDelta = start.x - actual.x
+            const rightDelta = (actual.x + actual.width) - (start.x + start.width)
+            if (leftDelta !== 0 || rightDelta !== 0) {
+                switch (this.dockMode) {
+                    case 'left': {
+                        // Anchored left: pin left edge, free edge is wherever the OS put the right
+                        result.x = wa.x
+                        result.width = Math.max(minW, Math.min(wa.width, (actual.x + actual.width) - wa.x))
+                        break
+                    }
+                    case 'right': {
+                        // Anchored right: pin right edge, free edge is wherever the OS put the left
+                        const waRight = wa.x + wa.width
+                        result.width = Math.max(minW, Math.min(wa.width, waRight - actual.x))
+                        result.x = waRight - result.width
+                        break
+                    }
+                    default: {
+                        // Symmetric: use the active (user-dragged) edge's delta consistently.
+                        // Fall back to max-abs when active edge is unknown.
+                        const delta = activeH === 'right' ? rightDelta
+                            : activeH === 'left' ? leftDelta
+                            : Math.abs(rightDelta) >= Math.abs(leftDelta) ? rightDelta : leftDelta
+                        const cx = start.x + start.width / 2
+                        result.width = Math.max(minW, Math.min(wa.width, start.width + 2 * delta))
+                        result.x = Math.round(cx - result.width / 2)
+                        break
+                    }
+                }
+            }
+
+            // Vertical axis
+            const topDelta = start.y - actual.y
+            const bottomDelta = (actual.y + actual.height) - (start.y + start.height)
+            if (topDelta !== 0 || bottomDelta !== 0) {
+                switch (this.dockMode) {
+                    case 'top': {
+                        // Anchored top: pin top edge, free edge is wherever the OS put the bottom
+                        result.y = wa.y
+                        result.height = Math.max(minH, Math.min(wa.height, (actual.y + actual.height) - wa.y))
+                        break
+                    }
+                    case 'bottom': {
+                        // Anchored bottom: pin bottom edge, free edge is wherever the OS put the top
+                        const waBottom = wa.y + wa.height
+                        result.height = Math.max(minH, Math.min(wa.height, waBottom - actual.y))
+                        result.y = waBottom - result.height
+                        break
+                    }
+                    default: {
+                        // Symmetric: use the active edge's delta consistently
+                        const delta = activeV === 'bottom' ? bottomDelta
+                            : activeV === 'top' ? topDelta
+                            : Math.abs(bottomDelta) >= Math.abs(topDelta) ? bottomDelta : topDelta
+                        const cy = start.y + start.height / 2
+                        result.height = Math.max(minH, Math.min(wa.height, start.height + 2 * delta))
+                        result.y = Math.round(cy - result.height / 2)
+                        break
+                    }
+                }
+            }
+
+            this.dockedBounds = result
+            this.window.setBounds(result)
+
+            let fill: number, space: number
+            switch (this.dockMode) {
+                case 'left': case 'right': case 'center':
+                    fill = result.width / wa.width
+                    space = result.height / wa.height
+                    break
+                case 'top': case 'bottom':
+                    fill = result.height / wa.height
+                    space = result.width / wa.width
+                    break
+                default:
+                    return
+            }
+            this.send('host:docked-resize', { fill, space })
+        })
+
         this.window.on('focus', () => {
             this.send('host:window-focused')
         })
@@ -392,6 +571,11 @@ export class Window {
         })
 
         this.on('window-set-bounds', (_, bounds) => {
+            if (this.dockMode !== 'off') {
+                this.dockedBounds = bounds
+            }
+            this.dragStartBounds = null
+            this.dragActiveEdges = null
             this.window?.setBounds(bounds)
         })
 

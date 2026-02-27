@@ -21,12 +21,21 @@ export class ElectronDockingService extends DockingService {
         electron.ipcRenderer.on('host:displays-changed', () => {
             this.zone.run(() => this.screensChanged.next())
         })
+
+        electron.ipcRenderer.on('host:docked-resize', (_event, { fill, space }: { fill: number, space: number }) => {
+            this.zone.run(() => {
+                this.config.store.appearance.dockFill = fill
+                this.config.store.appearance.dockSpace = space
+                this.config.save()
+            })
+        })
     }
 
     dock (): void {
         const dockSide = this.config.store.appearance.dock
 
         if (dockSide === 'off' || !this.bootstrapData.isMainWindow) {
+            this.electron.ipcRenderer.send('window-set-dock-mode', 'off')
             this.hostWindow.setAlwaysOnTop(false)
             return
         }
@@ -76,6 +85,7 @@ export class ElectronDockingService extends DockingService {
 
         const alwaysOnTop = this.config.store.appearance.dockAlwaysOnTop
 
+        this.electron.ipcRenderer.send('window-set-dock-mode', dockSide)
         this.hostWindow.setAlwaysOnTop(alwaysOnTop)
         setImmediate(() => {
             this.hostWindow.setBounds(newBounds)

@@ -50,26 +50,6 @@ export class WindowSettingsTabComponent extends BaseComponent {
         this.isFluentVibrancySupported = isWindowsBuild(WIN_BUILD_FLUENT_BG_SUPPORTED)
     }
 
-    get dockFillLabel (): string {
-        const dock = this.config.store.appearance.dock
-        return dock === 'top' || dock === 'bottom' ? 'Height' : 'Width'
-    }
-
-    get dockFillDescription (): string {
-        const dock = this.config.store.appearance.dock
-        return dock === 'top' || dock === 'bottom' ? 'Percentage of screen height' : 'Percentage of screen width'
-    }
-
-    get dockSpaceLabel (): string {
-        const dock = this.config.store.appearance.dock
-        return dock === 'top' || dock === 'bottom' ? 'Width' : 'Height'
-    }
-
-    get dockSpaceDescription (): string {
-        const dock = this.config.store.appearance.dock
-        return dock === 'top' || dock === 'bottom' ? 'Percentage of screen width' : 'Percentage of screen height'
-    }
-
     @debounce(500)
     saveConfiguration (requireRestart?: boolean) {
         this.config.save()
