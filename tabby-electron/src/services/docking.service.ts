@@ -49,6 +49,12 @@ export class ElectronDockingService extends DockingService {
 
         const newBounds: Bounds = { x: 0, y: 0, width: 0, height: 0 }
 
+        // dockFill = "depth": how far the window extends from its anchored edge,
+        //   as a fraction of the screen. Width for left/right/center, height for top/bottom.
+        // dockSpace = "span": how much of the parallel edge the window covers,
+        //   as a fraction of the screen. Height for left/right/center, width for top/bottom.
+        // Both values are updated live by the main process when the user resizes
+        // the window edges directly (host:docked-resize IPC).
         const fill = this.config.store.appearance.dockFill <= 1 ? this.config.store.appearance.dockFill : 1
         const space = this.config.store.appearance.dockSpace <= 1 ? this.config.store.appearance.dockSpace : 1
         const [minWidth, minHeight] = this.hostWindow.getWindow().getMinimumSize()
